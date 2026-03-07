@@ -3,7 +3,7 @@ services:
     name: movie-tracker-bot
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && playwright install chromium
+    buildCommand: pip install -r requirements.txt && playwright install --with-deps chromium
     startCommand: python tracker.py
     envVars:
       - key: TELEGRAM_TOKEN
