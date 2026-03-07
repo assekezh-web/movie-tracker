@@ -12,6 +12,11 @@ def send_telegram(text):
     requests.get(url)
 
 def run():
+    # Создаем пустой файл, если его нет, чтобы GitHub не выдавал ошибку
+    if not os.path.exists(FILE_NAME):
+        with open(FILE_NAME, "w") as f:
+            f.write("")
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -20,15 +25,16 @@ def run():
             element = page.wait_for_selector(".episodes .active", timeout=15000)
             current_val = element.inner_text().strip()
 
-            last_val = ""
-            if os.path.exists(FILE_NAME):
-                with open(FILE_NAME, "r") as f:
-                    last_val = f.read().strip()
+            with open(FILE_NAME, "r") as f:
+                last_val = f.read().strip()
 
             if current_val != last_val:
                 send_telegram(f"🔔 Новая серия!\nТекущая: {current_val}\n{URL}")
                 with open(FILE_NAME, "w") as f:
                     f.write(current_val)
+                print(f"Обновлено: {current_val}")
+            else:
+                print("Обновлений нет.")
         except Exception as e:
             print(f"Ошибка: {e}")
         finally:
