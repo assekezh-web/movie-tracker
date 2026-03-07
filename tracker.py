@@ -5,20 +5,20 @@ import threading
 from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
-# 1. Настройка Flask для Render (чтобы не было Timed Out)
+# 1. Настройка Flask для Render (чтобы статус стал Live)
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Movie Tracker Bot is Running!"
 
 def run_flask():
-    # Render использует порт 10000 по умолчанию
+    # Render ожидает ответ на порту 10000
     app.run(host='0.0.0.0', port=10000)
 
-# 2. Настройки бота
+# 2. Настройки бота и логирования
 logging.basicConfig(level=logging.INFO)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -34,7 +34,7 @@ def load_urls():
         with open(FILE_NAME, "r") as f:
             urls = [line.split('==')[0] for line in f if '==' in line]
 
-def check_updates():
+async def check_updates():
     results = []
     data = {}
     if os.path.exists(FILE_NAME):
@@ -44,15 +44,16 @@ def check_updates():
                     u, v = line.strip().split("==")
                     data[u] = v
 
-    with sync_playwright() as p:
+    async with async_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            browser = await p.chromium.launch(headless=True, args=['--no-sandbox'])
+            page = await browser.new_page()
             for url in urls:
                 try:
-                    page.goto(url, wait_until="networkidle", timeout=60000)
-                    element = page.wait_for_selector(".episodes .active", timeout=15000)
-                    current_val = element.inner_text().strip()
+                    await page.goto(url, wait_until="networkidle", timeout=60000)
+                    element = await page.wait_for_selector(".episodes .active", timeout=15000)
+                    current_val = await element.inner_text()
+                    current_val = current_val.strip()
                     name = url.split('/')[-1].replace('-', ' ').title()
 
                     if data.get(url) != current_val:
@@ -60,19 +61,19 @@ def check_updates():
                         data[url] = current_val
                 except Exception as e:
                     logging.error(f"Ошибка на {url}: {e}")
-            browser.close()
+            await browser.close()
         except Exception as e:
-            logging.error(f"Ошибка запуска браузера: {e}")
+            logging.error(f"Критическая ошибка браузера: {e}")
 
     with open(FILE_NAME, "w") as f:
         for u, v in data.items():
             f.write(f"{u}=={v}\n")
     return results
 
-# 3. Обработчики команд
+# 3. Команды бота
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("✅ Бот активен на Render!\n\nКоманды:\n/add [ссылка] — добавить сериал\n/list — что отслеживаем\n/check — проверить сейчас")
+    await message.answer("✅ Бот запущен на Render!\n\n/add [ссылка] — добавить сериал\n/list — список отслеживания\n/check — проверить сейчас")
 
 @dp.message(Command("add"))
 async def cmd_add(message: types.Message):
@@ -82,51 +83,49 @@ async def cmd_add(message: types.Message):
             urls.append(url)
             with open(FILE_NAME, "a") as f:
                 f.write(f"{url}==0\n")
-            await message.answer("👍 Добавил в список!")
+            await message.answer("👍 Сериал добавлен в список!")
         else:
-            await message.answer("Уже есть в списке.")
+            await message.answer("Этот сериал уже отслеживается.")
     else:
-        await message.answer("Нужна ссылка на kinovod.pro")
+        await message.answer("Пожалуйста, отправьте корректную ссылку на kinovod.pro")
 
 @dp.message(Command("list"))
 async def cmd_list(message: types.Message):
     load_urls()
     if not urls:
-        await message.answer("Список пуст.")
+        await message.answer("Ваш список пуст.")
     else:
         text = "\n".join([f"• {u.split('/')[-1]}" for u in urls])
-        await message.answer(f"Отслеживаю:\n{text}")
+        await message.answer(f"Сейчас отслеживаю:\n{text}")
 
 @dp.message(Command("check"))
 async def cmd_check(message: types.Message):
-    await message.answer("🔄 Проверяю серии, это займет около минуты...")
-    updates = check_updates()
+    await message.answer("🔄 Проверяю новые серии... Это займет около минуты.")
+    updates = await check_updates()
     if updates:
         for up in updates:
             await message.answer(up)
     else:
-        await message.answer("Новых серий не найдено.")
+        await message.answer("Пока новых серий нет.")
 
 async def scheduler():
     while True:
         await asyncio.sleep(21600) # Проверка каждые 6 часов
-        updates = check_updates()
+        updates = await check_updates()
         if updates:
             for up in updates:
                 try:
                     await bot.send_message(CHAT_ID, up)
                 except Exception as e:
-                    logging.error(f"Ошибка отправки: {e}")
+                    logging.error(f"Ошибка уведомления: {e}")
 
 async def main():
     load_urls()
-    # Запускаем фоновую проверку
     asyncio.create_task(scheduler())
-    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    # Сначала запускаем Flask в отдельном потоке
+    # Запуск Flask для Render в отдельном потоке
     threading.Thread(target=run_flask, daemon=True).start()
-    # Затем запускаем асинхронную часть
+    # Запуск основного цикла бота
     asyncio.run(main())
