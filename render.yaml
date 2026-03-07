@@ -1,7 +1,8 @@
 services:
-  - type: worker
+  - type: web
     name: movie-tracker-bot
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt && playwright install chromium
     startCommand: python tracker.py
     envVars:
