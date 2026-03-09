@@ -2,3 +2,4 @@ flask
 requests
 aiogram
 playwright
+psycopg2-binary
