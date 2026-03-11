@@ -9,7 +9,6 @@ from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# Flask для поддержки активности на Render
 app = Flask(__name__)
 @app.route('/')
 def home(): return "Bot is alive", 200
@@ -18,7 +17,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# Настройки из Environment Variables
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 DB_URL = os.getenv("DATABASE_URL")
@@ -44,11 +42,14 @@ async def get_last_episode(url):
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
-            # Поиск номера серии в структуре страницы
-            el = soup.select_one("li.active span.video-series-number")
-            if el:
-                num_text = "".join(filter(str.isdigit, el.get_text()))
-                return int(num_text) if num_text else 0
+            # Логика для kinovod.pro: ищем текст "серия" в информации о релизе
+            items = soup.find_all("div", class_="item")
+            for item in items:
+                text = item.get_text().lower()
+                if "серия" in text:
+                    # Извлекаем только цифры
+                    num_text = "".join(filter(str.isdigit, text))
+                    return int(num_text) if num_text else 0
         return 0
     except Exception as e:
         logging.error(f"Ошибка парсинга {url}: {e}")
@@ -70,10 +71,10 @@ async def cmd_list(message: types.Message):
 @dp.message(Command("add"))
 async def cmd_add(message: types.Message):
     url = message.text.replace("/add ", "").strip()
-    if "hdrezka" not in url:
-        return await message.answer("Пожалуйста, введите корректную ссылку на HDRezka.")
+    if "kinovod.pro" not in url:
+        return await message.answer("Пожалуйста, введите ссылку на kinovod.pro")
     
-    msg = await message.answer("⌛ Проверяю сериал...")
+    msg = await message.answer("⌛ Проверяю Kinovod...")
     ep = await get_last_episode(url)
     
     conn = get_conn()
@@ -82,11 +83,10 @@ async def cmd_add(message: types.Message):
     conn.commit()
     cur.close()
     conn.close()
-    await msg.edit_text(f"✅ Добавлено! Текущая серия: {ep}")
+    await msg.edit_text(f"✅ Добавлено! Последняя серия на Kinovod: {ep}")
 
 async def main():
     init_db()
-    logging.info("Бот запущен и готов к работе")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
