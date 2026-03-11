@@ -1,5 +1,5 @@
-flask
+beautifulsoup4
 requests
 aiogram
-playwright
+flask
 psycopg2-binary
